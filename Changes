@@ -1,5 +1,8 @@
 Revision history for Test-OpenLDAP
 
+0.2  Tue Feb 28 21:45:43 2013
+       Code cleanup to respond to first round of CPAN tests
+
 0.1  Tue Feb 26 22:04:49 2013
        Initial release.
 
