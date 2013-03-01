@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Test-OpenLDAP
-version:            0.02
+version:            0.03
 abstract:           Creates a temporary instance of OpenLDAP's slapd daemon to run tests against.
 author:
     - David Dick <ddick@cpan.org>

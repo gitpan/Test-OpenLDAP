@@ -1,5 +1,8 @@
 Revision history for Test-OpenLDAP
 
+0.3  Fri Mar 01 19:12:27 2013
+       Added the suffix parameter to new
+
 0.2  Tue Feb 28 21:45:43 2013
        Code cleanup to respond to first round of CPAN tests
 

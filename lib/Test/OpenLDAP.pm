@@ -18,11 +18,11 @@ Test::OpenLDAP - Creates a temporary instance of OpenLDAP's slapd daemon to run 
 
 =head1 VERSION
 
-Version 0.02
+Version 0.03
 
 =cut
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 our @CARP_NOT = ('Test::OpenLDAP');
 sub USER_READ_WRITE_PERMISSIONS         { return 600; }
@@ -41,7 +41,7 @@ sub MAX_VALUE_OF_BYTE                   { return 255; }
 This module allows easy creation and tear down of a OpenLDAP slapd instance.  When the variable goes 
 out of scope, the slapd instance is torn down and the file system objects it relies on are removed.
 
-  my $slapd = Test::OpenLDAP->new();
+  my $slapd = Test::OpenLDAP->new(); # Test::OpenLDAP->new({ suffix => 'dc=foobar,dc=com' });
 
   my $ldap = Net::LDAP->new($slapd->uri()) or Carp::croak("Failed to connect:$@");
 
@@ -61,14 +61,15 @@ out of scope, the slapd instance is torn down and the file system objects it rel
 =head2 new
 
 This method initialises and starts an OpenLDAP slapd instance, listening on a unix socket.  It then creates an admin user and password and returns the slapd instance to the user.
+The method accepts a hash parameter of configuration options.  The only option it accepts at the moment is the 'suffix' option.
 
 =cut
 
 sub new {
-    my ($class) = @_;
+    my ( $class, $params ) = @_;
     my $self = {};
     bless $self, $class;
-    $self->{suffix}     = 'dc=example,dc=com';
+    $self->{suffix} = $params->{suffix} || 'dc=example,dc=com';
     $self->{admin_user} = 'cn=root,' . $self->{suffix};
     my $string = q[];
     foreach ( 0 .. LENGTH_OF_RANDOM_ADMIN_PASSWORD() ) {
@@ -107,22 +108,18 @@ sub new {
     $self->{olc_database_hdb_path} =
       File::Spec->catfile( $self->{cn_config_directory},
         'olcDatabase={1}hdb.ldif' );
-    $self->{db_directory} =
-      File::Spec->catdir( $self->{root_directory}, 'db' );
+    $self->{db_directory} = File::Spec->catdir( $self->{root_directory}, 'db' );
 
     mkdir $self->{root_directory}, oct USER_READ_WRITE_EXECUTE_PERMISSIONS()
       or Carp::croak("Failed to mkdir $self->{root_directory}:$OS_ERROR");
-    mkdir $self->{slapd_d_directory},
-      oct USER_READ_WRITE_EXECUTE_PERMISSIONS()
+    mkdir $self->{slapd_d_directory}, oct USER_READ_WRITE_EXECUTE_PERMISSIONS()
       or Carp::croak("Failed to mkdir $self->{slapd_d_directory}:$OS_ERROR");
     mkdir $self->{cn_config_directory},
       oct USER_READ_WRITE_EXECUTE_PERMISSIONS()
-      or
-      Carp::croak("Failed to mkdir $self->{cn_config_directory}:$OS_ERROR");
+      or Carp::croak("Failed to mkdir $self->{cn_config_directory}:$OS_ERROR");
     mkdir $self->{cn_schema_directory},
       oct USER_READ_WRITE_EXECUTE_PERMISSIONS()
-      or
-      Carp::croak("Failed to mkdir $self->{cn_schema_directory}:$OS_ERROR");
+      or Carp::croak("Failed to mkdir $self->{cn_schema_directory}:$OS_ERROR");
     mkdir $self->{db_directory}, oct USER_READ_WRITE_EXECUTE_PERMISSIONS()
       or Carp::croak("Failed to mkdir $self->{db_directory}:$OS_ERROR");
     $self->_create_config_ldif();
@@ -133,7 +130,7 @@ sub new {
       "olcDatabase=$self->{olc_database_for_config}";
     $self->_create_olc_database_config();
     $self->{olc_database_for_hdb} = '{1}hdb';
-    $self->{database_hdb_rdn} = "olcDatabase=$self->{olc_database_for_hdb}";
+    $self->{database_hdb_rdn}     = "olcDatabase=$self->{olc_database_for_hdb}";
     $self->_create_olc_database_hdb();
     $self->{uri} = "ldapi://$self->{encoded_socket_path}/$self->{suffix}";
     $self->start();
@@ -314,10 +311,16 @@ sub _slapd_d_directory {
     return $self->{slapd_d_directory};
 }
 
+sub _entry_csn {
+    return POSIX::strftime( '%Y%m%d%H%M%S.000000Z#000000#000#000000',
+        localtime time );
+}
+
 sub _create_config_ldif {
     my ($self)      = @_;
     my $write_flags = Fcntl::O_WRONLY() | Fcntl::O_CREAT() | Fcntl::O_EXCL();
     my $uuid        = lc $self->_uuid();
+    my $entry_csn   = $self->_entry_csn();
     my $create_timestamp = POSIX::strftime( '%Y%m%d%H%M%SZ', gmtime time );
     my $handle = FileHandle->new( $self->{config_ldif_path},
         $write_flags, oct USER_READ_WRITE_PERMISSIONS() )
@@ -357,7 +360,7 @@ structuralObjectClass: olcGlobal
 entryUUID: $uuid
 creatorsName: cn=config
 createTimestamp: $create_timestamp
-entryCSN: 20130202060938.975892Z#000000#000#000000
+entryCSN: $entry_csn
 modifiersName: cn=config
 modifyTimestamp: $create_timestamp
 __CONFIG_LDIF__
@@ -370,12 +373,12 @@ sub _create_schema_ldif {
     my ($self)      = @_;
     my $write_flags = Fcntl::O_WRONLY() | Fcntl::O_CREAT() | Fcntl::O_EXCL();
     my $uuid        = lc $self->_uuid();
+    my $entry_csn   = $self->_entry_csn();
     my $create_timestamp = POSIX::strftime( '%Y%m%d%H%M%SZ', gmtime time );
     my $handle = FileHandle->new( $self->{cn_schema_ldif_path},
         $write_flags, oct USER_READ_WRITE_PERMISSIONS() )
       or Carp::croak(
-        "Failed to open '$self->{cn_schema_ldif_path}' for writing:$OS_ERROR"
-      );
+        "Failed to open '$self->{cn_schema_ldif_path}' for writing:$OS_ERROR");
     $handle->print(
         <<"__SCHEMA_LDIF__") or Carp::croak("Failed to write to '$self->{cn_schema_ldif_path}':$OS_ERROR");
 dn: cn=schema
@@ -1235,7 +1238,7 @@ structuralObjectClass: olcSchemaConfig
 entryUUID: $uuid
 creatorsName: cn=config
 createTimestamp: $create_timestamp
-entryCSN: 20130202060938.975892Z#000000#000#000000
+entryCSN: $entry_csn
 modifiersName: cn=config
 modifyTimestamp: $create_timestamp
 __SCHEMA_LDIF__
@@ -1249,6 +1252,7 @@ sub _create_schema_core_ldif {
     my ($self)      = @_;
     my $write_flags = Fcntl::O_WRONLY() | Fcntl::O_CREAT() | Fcntl::O_EXCL();
     my $uuid        = lc $self->_uuid();
+    my $entry_csn   = $self->_entry_csn();
     my $create_timestamp = POSIX::strftime( '%Y%m%d%H%M%SZ', gmtime time );
     my $handle = FileHandle->new( $self->{cn_schema_core_ldif_path},
         $write_flags, oct USER_READ_WRITE_PERMISSIONS() )
@@ -1496,7 +1500,7 @@ structuralObjectClass: olcSchemaConfig
 entryUUID: $uuid
 creatorsName: cn=config
 createTimestamp: $create_timestamp
-entryCSN: 20130202060938.975892Z#000000#000#000000
+entryCSN: $entry_csn
 modifiersName: cn=config
 modifyTimestamp: $create_timestamp
 __SCHEMA_CORE_LDIF__
@@ -1510,6 +1514,7 @@ sub _create_olc_database_config {
     my ($self)      = @_;
     my $write_flags = Fcntl::O_WRONLY() | Fcntl::O_CREAT() | Fcntl::O_EXCL();
     my $uuid        = lc $self->_uuid();
+    my $entry_csn   = $self->_entry_csn();
     my ( $uid, $gid ) =
       ( getpwuid $EFFECTIVE_USER_ID )[ UID_INDEX(), GID_INDEX() ];
     my $create_timestamp = POSIX::strftime( '%Y%m%d%H%M%SZ', gmtime time );
@@ -1533,10 +1538,10 @@ olcAccess: to * by * read
 olcSyncUseSubentry: FALSE
 olcMonitoring: FALSE
 structuralObjectClass: olcDatabaseConfig
-entryUUID: deec927e-014a-1032-9caf-99c3b600461c
+entryUUID: $uuid
 creatorsName: cn=config
 createTimestamp: $create_timestamp
-entryCSN: 20130202060938.975892Z#000000#000#000000
+entryCSN: $entry_csn
 modifiersName: cn=config
 modifyTimestamp: $create_timestamp
 __DB_CONFIG_LDIF__
@@ -1550,13 +1555,14 @@ sub _create_olc_database_hdb {
     my ($self)      = @_;
     my $write_flags = Fcntl::O_WRONLY() | Fcntl::O_CREAT() | Fcntl::O_EXCL();
     my $uuid        = lc $self->_uuid();
+    my $entry_csn   = $self->_entry_csn();
     my $create_timestamp = POSIX::strftime( '%Y%m%d%H%M%SZ', gmtime time );
     my ( $uid, $gid ) =
       ( getpwuid $EFFECTIVE_USER_ID )[ UID_INDEX(), GID_INDEX() ];
     my $handle = FileHandle->new( $self->{olc_database_hdb_path},
         $write_flags, oct USER_READ_WRITE_PERMISSIONS() )
       or Carp::croak(
-"Failed to open '$self->{olc_database_hdb_path}' for writing:$OS_ERROR"
+        "Failed to open '$self->{olc_database_hdb_path}' for writing:$OS_ERROR"
       );
     my $user     = $self->admin_user();
     my $suffix   = $self->suffix();
@@ -1593,13 +1599,13 @@ olcSuffix: $suffix
 olcRootDN: $user
 olcRootPW: ${password}
 olcAccess: to * by * read
-entryCSN: 20130202060938.975892Z#000000#000#000000
+entryCSN: $entry_csn
 modifiersName: cn=config
 modifyTimestamp: $create_timestamp
 __DB_LDIF__
     close $handle
-      or Carp::croak(
-        "Failed to close '$self->{olc_database_hdb_path}':$OS_ERROR");
+      or
+      Carp::croak("Failed to close '$self->{olc_database_hdb_path}':$OS_ERROR");
     return;
 }
 
@@ -1642,8 +1648,8 @@ sub _remove_cn_schema_directory {
         "Failed to unlink '$self->{cn_schema_core_ldif_path}:$OS_ERROR");
     unlink $self->{cn_schema_ldif_path}
       or ( $OS_ERROR == POSIX::ENOENT() )
-      or Carp::croak(
-        "Failed to unlink '$self->{cn_schema_ldif_path}':$OS_ERROR");
+      or
+      Carp::croak("Failed to unlink '$self->{cn_schema_ldif_path}':$OS_ERROR");
     my $cn_schema_handle = DirHandle->new( $self->{cn_schema_directory} );
     if ($cn_schema_handle) {
         while ( my $entry = $cn_schema_handle->read() ) {
@@ -1657,12 +1663,12 @@ sub _remove_cn_schema_directory {
         }
         $cn_schema_handle->close()
           or Carp::croak(
-"Failed to close directory '$self->{cn_schema_directory}':$OS_ERROR"
+            "Failed to close directory '$self->{cn_schema_directory}':$OS_ERROR"
           );
     }
     elsif ( $OS_ERROR != POSIX::ENOENT() ) {
         Carp::croak(
-"Failed to open directory '$self->{cn_schema_directory}':$OS_ERROR"
+            "Failed to open directory '$self->{cn_schema_directory}':$OS_ERROR"
         );
     }
     rmdir $self->{cn_schema_directory}
@@ -1694,16 +1700,13 @@ sub DESTROY {
       Carp::croak("Failed to rmdir '$self->{cn_config_directory}':$OS_ERROR");
     unlink $self->{config_ldif_path}
       or ( $OS_ERROR == POSIX::ENOENT() )
-      or
-      Carp::croak("Failed to unlink '$self->{config_ldif_path}':$OS_ERROR");
+      or Carp::croak("Failed to unlink '$self->{config_ldif_path}':$OS_ERROR");
     rmdir $self->{slapd_d_directory}
       or ( $OS_ERROR == POSIX::ENOENT() )
-      or
-      Carp::croak("Failed to rmdir '$self->{slapd_d_directory}':$OS_ERROR");
+      or Carp::croak("Failed to rmdir '$self->{slapd_d_directory}':$OS_ERROR");
     unlink $self->{slapd_socket_path}
       or ( $OS_ERROR == POSIX::ENOENT() )
-      or
-      Carp::croak("Failed to unlink '$self->{slapd_socket_path}':$OS_ERROR");
+      or Carp::croak("Failed to unlink '$self->{slapd_socket_path}':$OS_ERROR");
     rmdir $self->{root_directory}
       or ( $OS_ERROR == POSIX::ENOENT() )
       or Carp::croak("Failed to rmdir '$self->{root_directory}':$OS_ERROR");
