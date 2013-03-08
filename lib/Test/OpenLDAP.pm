@@ -18,11 +18,11 @@ Test::OpenLDAP - Creates a temporary instance of OpenLDAP's slapd daemon to run 
 
 =head1 VERSION
 
-Version 0.03
+Version 0.04
 
 =cut
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 our @CARP_NOT = ('Test::OpenLDAP');
 sub USER_READ_WRITE_PERMISSIONS         { return 600; }

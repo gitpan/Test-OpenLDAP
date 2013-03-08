@@ -42,6 +42,7 @@ WriteMakefile(
 	'File::Temp' => 0,
 	'URI::Escape' => 0,
 	'English' => 0,
+	'Net::LDAP' => 0,
     },
     dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean               => { FILES => 'Test-OpenLDAP-*' },
