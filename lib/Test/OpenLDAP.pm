@@ -22,7 +22,7 @@ Version 0.04
 
 =cut
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 our @CARP_NOT = ('Test::OpenLDAP');
 sub USER_READ_WRITE_PERMISSIONS         { return 600; }
@@ -200,6 +200,9 @@ sub start {
     }
     else {
         eval {
+            local $ENV{PATH} = "$ENV{PATH}$Config{path_sep}/usr/lib/openldap"
+              ;    # adding /usr/lib/openldap for OpenSUSE deployments
+
             exec { OPENLDAP_SLAPD_BINARY_NAME() } OPENLDAP_SLAPD_BINARY_NAME(),
               '-d', '0', '-h', "ldapi://$self->{encoded_socket_path}", '-F',
               $self->_slapd_d_directory()
